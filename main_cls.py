@@ -27,7 +27,7 @@ import pdb
 from fvcore.nn import FlopCountAnalysis
 from fvcore.nn import flop_count_table
 from fvcore.nn import flop_count_str
-
+import torch.nn.utils.prune as prune
 
 def _init_():
     if not os.path.exists('outputs'):
@@ -40,6 +40,7 @@ def _init_():
     os.system('cp model.py outputs' + '/' + args.exp_name + '/' + 'model.py.backup')
     os.system('cp util.py outputs' + '/' + args.exp_name + '/' + 'util.py.backup')
     os.system('cp data.py outputs' + '/' + args.exp_name + '/' + 'data.py.backup')
+
 
 def train(args, io):
     
@@ -118,6 +119,21 @@ def train(args, io):
                  f.write(flop_count_str(flops))
             '''
             #end by jubran
+
+            # added by jubran for global pruning
+            '''
+            parameters_to_prune = (
+                (model.module.trans0.q_conv, 'weight'),
+                (model.module.trans1.q_conv, 'weight'),
+            )
+
+            prune.global_unstructured(
+                parameters_to_prune,
+                pruning_method=prune.L1Unstructured,
+                amount=0.5,
+            )
+            '''
+            ### end by jubran
 
             logits = model(data)
             #pdb.set_trace()
