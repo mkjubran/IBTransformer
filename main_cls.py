@@ -9,8 +9,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 from tqdm import tqdm
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
-from data import ModelNet40,ModelNet10,ScanObjectNN
-from model import PointNet, IBT_cls
+from data import ModelNet40,ModelNet10,ScanObjectNN, MNIST
+#from model import PointNet, IBT_cls
+from model_3DMNIST import PointNet, IBT_cls
 import numpy as np
 from torch.utils.data import DataLoader
 import time
@@ -23,6 +24,10 @@ from ptflops import get_model_complexity_info
 from torchstat import stat
 
 import pdb
+from fvcore.nn import FlopCountAnalysis
+from fvcore.nn import flop_count_table
+from fvcore.nn import flop_count_str
+
 
 def _init_():
     if not os.path.exists('outputs'):
@@ -37,16 +42,25 @@ def _init_():
     os.system('cp data.py outputs' + '/' + args.exp_name + '/' + 'data.py.backup')
 
 def train(args, io):
+    
     '''
+    # for ScanObjectNN dataset
     train_loader = DataLoader(ScanObjectNN(partition='train', num_points=args.num_points), num_workers=8, batch_size=args.batch_size, shuffle=True, drop_last=True)
     test_loader = DataLoader(ScanObjectNN(partition='test', num_points=args.num_points), num_workers=8, batch_size=args.test_batch_size, shuffle=True, drop_last=False)
 
     '''
 
+    '''
+    # for ModelNet40 dataset
     train_loader = DataLoader(ModelNet40(partition='train', num_points=args.num_points), num_workers=8,batch_size=args.batch_size, shuffle=True, drop_last=True)
     test_loader = DataLoader(ModelNet40(partition='test', num_points=args.num_points), num_workers=8,batch_size=args.test_batch_size, shuffle=True, drop_last=False)
+    '''
 
-    #pdb.set_trace()
+
+    # for MNIST dataset
+    train_loader = DataLoader(MNIST(partition='train', num_points=args.num_points), num_workers=8,batch_size=args.batch_size, shuffle=True, drop_last=True)
+    test_loader = DataLoader(MNIST(partition='test', num_points=args.num_points), num_workers=8,batch_size=args.test_batch_size, shuffle=True, drop_last=False)
+
 
     device = torch.device("cuda" if args.cuda else "cpu")
 
@@ -94,6 +108,17 @@ def train(args, io):
             data = data.permute(0, 2, 1)
             batch_size = data.size()[0]
             opt.zero_grad()
+
+            #added by jubran to measure number of flops
+            '''
+            flops = FlopCountAnalysis(model, data)
+            #print(flops.total())
+            with open('FlopsCount.txt', 'w') as f:
+                 f.write(flop_count_table(flops))
+                 f.write(flop_count_str(flops))
+            '''
+            #end by jubran
+
             logits = model(data)
             #pdb.set_trace()
             loss = criterion(logits, label)
@@ -139,6 +164,12 @@ def train(args, io):
                 data, label = data.to(device), label.to(device).squeeze()
                 data = data.permute(0, 2, 1)
                 batch_size = data.size()[0]
+
+                #added by jubran to measure number of flops
+                #flops = FlopCountAnalysis(model, data)
+                #print(flops.total())
+                #end by jubran
+
                 logits = model(data)
                 loss = criterion(logits, label)
                 preds = logits.max(dim=1)[1]

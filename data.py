@@ -9,6 +9,7 @@ import json
 import cv2
 from torch.utils.data import Dataset
 
+import pdb
 
 def download_modelnet40():
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -58,6 +59,60 @@ def download_S3DIS():
             os.system('mv %s %s' % ('Stanford3dDataset_v1.2_Aligned_Version', DATA_DIR))
             os.system('rm %s' % (zippath))
 
+# Jubran -------
+def vector_to_voxel(vector, shape=(16,16,16)):
+    vec_shape = list(vector.shape[:-1]) + list(shape)
+    voxel = vector.reshape(*vec_shape)
+    return voxel
+
+def voxel_to_pointcloud(voxel, num_points=None, shuffle=True):
+    assert len(voxel.shape)==3, f"Voxel should be a 3D tensor. Given shape {voxel.shape}!=3"
+    x, y, z = np.nonzero(voxel)
+    point_cloud = np.concatenate([np.expand_dims(x,axis=1), np.expand_dims(y,axis=1), np.expand_dims(z,axis=1)], axis=1)
+    if num_points is not None:
+        if point_cloud.shape[0] >= num_points:
+            ids = list(range(point_cloud.shape[0]))
+            ids = ids[:num_points] if shuffle==False else np.random.permutation(ids)[:num_points]
+            point_cloud = point_cloud[ids,:]
+        else:
+            diff = num_points - len(point_cloud)
+            padding = np.zeros([diff, 3])
+            point_cloud = np.concatenate([point_cloud, padding], axis=0)
+            ids = list(range(len(point_cloud)))
+            ids = ids[:num_points] if shuffle==False else np.random.permutation(ids)[:num_points]
+            point_cloud = point_cloud[ids,:]        
+    return point_cloud
+
+
+def vector_to_pointcloud(vector, num_points=None, shuffle=True):
+    voxel = vector_to_voxel(vector)
+    voxel = np.squeeze(voxel)
+    point_cloud = voxel_to_pointcloud(voxel, num_points, shuffle)
+    return point_cloud
+
+def load_data_MNIST(partition, num_points): 
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    DATA_DIR = os.path.join(BASE_DIR, 'data')
+    #DATA_DIR = '/home/data/lzh'
+    all_data = []
+    all_label = []
+
+    f = h5py.File(os.path.join(DATA_DIR, 'MNIST', 'full_dataset_vectors.h5'), 'r+')
+    if partition == 'test':
+       all_data = f["X_test"][:].astype('float32')
+       all_label = f["y_test"][:].astype('int64')
+    else:
+       all_data = f["X_train"][:].astype('float32')
+       all_label = f["y_train"][:].astype('int64')
+
+    temp = []
+    for vec in all_data:
+       pc = vector_to_pointcloud(vec, num_points=num_points, shuffle=True)
+       temp.append(pc/16)
+    all_data = np.array(temp).astype('float32')
+
+    return all_data, all_label
+#----------
 
 def load_data_cls(partition):
     #download_modelnet40()
@@ -297,6 +352,7 @@ def rotate_pointcloud(pointcloud):
 
 class ModelNet40(Dataset):
     def __init__(self, num_points, partition='train'):
+        #pdb.set_trace()
         self.data, self.label = load_data_cls(partition)
         self.num_points = num_points
         self.partition = partition        
@@ -410,6 +466,26 @@ class S3DIS(Dataset):
     def __len__(self):
         return self.data.shape[0]
 
+#Jubran ------------------
+class MNIST(Dataset):
+    def __init__(self, num_points, partition='train'):
+        #pdb.set_trace()
+        self.data, self.label = load_data_MNIST(partition,num_points)
+        self.num_points = num_points
+        self.partition = partition
+
+    def __getitem__(self, item):
+        pointcloud = self.data[item][:self.num_points]
+        label = self.label[item]
+        if self.partition == 'train':
+            pointcloud = translate_pointcloud(pointcloud)
+            np.random.shuffle(pointcloud)
+        return pointcloud, label
+
+    def __len__(self):
+        return self.data.shape[0]
+# --------------------
+
 
 if __name__ == '__main__':
     train = ModelNet40(1024)
@@ -430,3 +506,6 @@ if __name__ == '__main__':
     data, seg = train[0]
     print(data.shape)
     print(seg.shape)
+
+    train = MNIST(4096)
+    test = MNIST(4096, 'test')
