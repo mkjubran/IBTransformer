@@ -29,6 +29,7 @@ from fvcore.nn import flop_count_table
 from fvcore.nn import flop_count_str
 import torch.nn.utils.prune as prune
 
+
 def _init_():
     if not os.path.exists('outputs'):
         os.makedirs('outputs')
